@@ -309,7 +309,7 @@ def get_available_time_slots(requested_date=None):
 @limiter.exempt
 def health_check():
     """Health check endpoint (exempt from rate limiting)"""
-    return jsonify({"status": "healthy", "service": "Umuve API"}), 200
+    return jsonify({"status": "healthy", "service": "Umuve API", "version": "2.0.0-secure"}), 200
 
 
 @app.route("/api/run-migrate/<secret>", methods=["POST"])
