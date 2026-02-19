@@ -29,7 +29,7 @@ USER appuser
 
 COPY --chown=appuser:appuser . .
 
-ENV FLASK_APP=app.py
+ENV FLASK_APP=server.py
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 5000
@@ -43,7 +43,7 @@ USER appuser
 
 COPY --chown=appuser:appuser . .
 
-ENV FLASK_APP=app.py
+ENV FLASK_APP=server.py
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_ENV=production
 
@@ -52,4 +52,4 @@ EXPOSE 5000
 # Use gunicorn for production
 RUN pip install --no-cache-dir gunicorn
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "server:app"]

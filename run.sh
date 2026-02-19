@@ -1,5 +1,5 @@
 #!/bin/bash
-# JunkOS Backend Quick Start Script
+# Umuve Backend Quick Start Script
 
 cd "$(dirname "$0")"
 
@@ -22,5 +22,5 @@ if [ ! -f ".env" ]; then
 fi
 
 # Run the Flask app
-echo "Starting JunkOS API on http://localhost:8080"
+echo "Starting Umuve API on http://localhost:8080"
 python app.py

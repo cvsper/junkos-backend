@@ -13,7 +13,7 @@ except ImportError:
 
 
 class Database:
-    def __init__(self, db_path='junkos.db'):
+    def __init__(self, db_path='umuve.db'):
         # Check if DATABASE_URL is set (for PostgreSQL)
         self.database_url = os.environ.get('DATABASE_URL')
         
