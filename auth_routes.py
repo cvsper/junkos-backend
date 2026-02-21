@@ -377,12 +377,19 @@ def login():
 @auth_bp.route('/apple', methods=['POST'])
 def apple_signin():
     """Authenticate with Apple Sign In credential"""
+    from models import Contractor
+
     data = request.get_json()
     identity_token = data.get('identity_token')
     nonce = data.get('nonce')
     user_identifier = data.get('userIdentifier')
     email = data.get('email')
     name = data.get('name')
+    role = data.get('role', 'customer')  # Default to customer if not specified
+
+    # Validate role
+    if role not in ['customer', 'driver', 'operator']:
+        return jsonify({'error': 'Invalid role'}), 400
 
     # New flow: validate identity_token and nonce
     if identity_token and nonce:
@@ -405,24 +412,76 @@ def apple_signin():
     user = None
     user_id = None
 
-    # Search by Apple ID
+    # Search by Apple ID in in-memory store
     for uid, u in users_db.items():
         if u.get('apple_id') == user_identifier:
             user = u
             user_id = uid
             break
 
+    # Also check database for existing user
+    if not user:
+        db_user = User.query.filter_by(apple_id=user_identifier).first()
+        if db_user:
+            # Validate role matches
+            if db_user.role and db_user.role != role:
+                if role == 'customer':
+                    return jsonify({'error': 'This account is registered as a driver. Please use the driver app.'}), 403
+                elif role == 'driver':
+                    return jsonify({'error': 'This account is registered as a customer. Please use the customer app.'}), 403
+
+            # Update role if not set
+            if not db_user.role:
+                db_user.role = role
+                db.session.commit()
+
+            user_id = db_user.id
+            user = {
+                'id': db_user.id,
+                'apple_id': db_user.apple_id,
+                'email': db_user.email,
+                'name': db_user.name,
+                'phoneNumber': db_user.phone_number,
+                'role': db_user.role
+            }
+
     # Create new user if not found
     if not user:
         user_id = secrets.token_hex(16)
-        users_db[user_id] = {
+
+        # Create database user
+        db_user = User(
+            id=user_id,
+            apple_id=user_identifier,
+            email=email,
+            name=name,
+            phone_number=None,
+            role=role
+        )
+        db.session.add(db_user)
+
+        # If driver, create contractor record
+        if role == 'driver':
+            contractor = Contractor(
+                user_id=user_id,
+                is_available=False,
+                rating=5.0
+            )
+            db.session.add(contractor)
+
+        db.session.commit()
+
+        user = {
             'id': user_id,
             'apple_id': user_identifier,
             'email': email,
             'name': name,
-            'phoneNumber': None
+            'phoneNumber': None,
+            'role': role
         }
-        user = users_db[user_id]
+
+        # Also add to in-memory store for backward compatibility
+        users_db[user_id] = user
 
     # Generate token
     token = generate_token(user_id)
@@ -434,7 +493,8 @@ def apple_signin():
             'id': user['id'],
             'name': user.get('name'),
             'email': user.get('email'),
-            'phoneNumber': user.get('phoneNumber')
+            'phoneNumber': user.get('phoneNumber'),
+            'role': user.get('role')
         }
     })
 
@@ -740,5 +800,72 @@ def find_or_create_user_by_phone(phone_number):
         'email': None,
         'name': None
     }
-    
+
     return user_id
+
+
+# MARK: - Utility Endpoint for Testing
+@auth_bp.route('/upgrade_operator', methods=['POST'])
+def upgrade_to_operator():
+    """Temporary endpoint to upgrade a user to operator role for testing.
+
+    Requires a secret key for security.
+    Body: {"email": "user@example.com", "secret": "your-secret"}
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Request body required'}), 400
+
+    email = data.get('email', '').strip().lower()
+    secret = data.get('secret', '').strip()
+
+    # Simple secret check (use env var in production)
+    UPGRADE_SECRET = os.environ.get('UPGRADE_SECRET', 'umuve-upgrade-2026')
+
+    if secret != UPGRADE_SECRET:
+        return jsonify({'error': 'Invalid secret'}), 403
+
+    if not email:
+        return jsonify({'error': 'Email required'}), 400
+
+    # Find and upgrade the user
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    # Upgrade to operator
+    user.role = 'operator'
+
+    # Create or update Contractor record with is_operator=True
+    from models import Contractor, generate_uuid
+    contractor = Contractor.query.filter_by(user_id=user.id).first()
+    if not contractor:
+        contractor = Contractor(
+            id=generate_uuid(),
+            user_id=user.id,
+            is_operator=True,
+            approval_status='approved',
+            onboarding_status='approved'
+        )
+        db.session.add(contractor)
+    else:
+        contractor.is_operator = True
+        contractor.approval_status = 'approved'
+        contractor.onboarding_status = 'approved'
+
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': f'User {email} upgraded to operator with contractor record',
+        'user': {
+            'id': user.id,
+            'email': user.email,
+            'name': user.name,
+            'role': user.role
+        },
+        'contractor': {
+            'id': contractor.id,
+            'is_operator': contractor.is_operator
+        }
+    }), 200
