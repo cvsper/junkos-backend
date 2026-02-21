@@ -869,3 +869,49 @@ def upgrade_to_operator():
             'is_operator': contractor.is_operator
         }
     }), 200
+
+# MARK: - Dev/Test Login for Drivers
+
+@auth_bp.route('/dev-driver-login', methods=['POST'])
+def dev_driver_login():
+    """Dev-only endpoint to quickly login as a test driver"""
+    from models import Contractor
+    
+    data = request.get_json()
+    phone = data.get('phone', '+15555555555')
+    
+    # Find or create test driver
+    test_driver = User.query.filter_by(phone_number=phone).first()
+    
+    if not test_driver:
+        test_driver = User(
+            id=secrets.token_hex(16),
+            phone_number=phone,
+            name="Test Driver",
+            email="driver@test.com",
+            role="driver"
+        )
+        db.session.add(test_driver)
+        
+        # Create contractor
+        contractor = Contractor(
+            user_id=test_driver.id,
+            is_available=True,
+            rating=5.0
+        )
+        db.session.add(contractor)
+        db.session.commit()
+    
+    token = generate_token(test_driver.id)
+    
+    return jsonify({
+        'success': True,
+        'token': token,
+        'user': {
+            'id': test_driver.id,
+            'name': test_driver.name,
+            'email': test_driver.email,
+            'phoneNumber': test_driver.phone_number,
+            'role': test_driver.role
+        }
+    })
