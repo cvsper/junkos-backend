@@ -915,3 +915,92 @@ def dev_driver_login():
             'role': test_driver.role
         }
     })
+
+# MARK: - Email/Password Auth for Drivers
+
+@auth_bp.route('/driver-signup', methods=['POST'])
+def driver_signup():
+    """Sign up as a driver with email and password"""
+    from models import Contractor
+    
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    name = data.get('name')
+    
+    if not email or not password:
+        return jsonify({'error': 'Email and password required'}), 400
+    
+    # Check if email already exists
+    existing_user = User.query.filter_by(email=email).first()
+    if existing_user:
+        return jsonify({'error': 'Email already registered'}), 409
+    
+    # Create driver user
+    user_id = secrets.token_hex(16)
+    new_user = User(
+        id=user_id,
+        email=email,
+        password_hash=hash_password(password),
+        name=name,
+        role='driver'
+    )
+    db.session.add(new_user)
+    
+    # Create contractor record
+    contractor = Contractor(
+        user_id=user_id,
+        is_available=False,
+        rating=5.0
+    )
+    db.session.add(contractor)
+    db.session.commit()
+    
+    # Generate token
+    token = generate_token(user_id)
+    
+    return jsonify({
+        'success': True,
+        'token': token,
+        'user': {
+            'id': new_user.id,
+            'name': new_user.name,
+            'email': new_user.email,
+            'phoneNumber': new_user.phone_number,
+            'role': new_user.role
+        }
+    })
+
+@auth_bp.route('/driver-login', methods=['POST'])
+def driver_login():
+    """Login as a driver with email and password"""
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    
+    if not email or not password:
+        return jsonify({'error': 'Email and password required'}), 400
+    
+    # Find user
+    user = User.query.filter_by(email=email).first()
+    if not user or user.password_hash != hash_password(password):
+        return jsonify({'error': 'Invalid email or password'}), 401
+    
+    # Verify role
+    if user.role != 'driver':
+        return jsonify({'error': 'This account is not registered as a driver. Please use the customer app.'}), 403
+    
+    # Generate token
+    token = generate_token(user.id)
+    
+    return jsonify({
+        'success': True,
+        'token': token,
+        'user': {
+            'id': user.id,
+            'name': user.name,
+            'email': user.email,
+            'phoneNumber': user.phone_number,
+            'role': user.role
+        }
+    })
