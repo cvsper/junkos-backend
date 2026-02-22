@@ -596,29 +596,30 @@ def get_earnings_history(user_id):
     entries = []
     for payment in payments:
         job = db.session.get(Job, payment.job_id)
+        payout = payment.driver_payout_amount or 0.0
         entries.append({
             "id": payment.id,
             "job_id": payment.job_id,
             "address": job.address if job else None,
-            "amount": round(payment.driver_payout_amount, 2),
+            "amount": round(payout, 2),
             "date": payment.created_at.isoformat() if payment.created_at else None,
             "payout_status": payment.payout_status,
         })
 
-    # Compute summary
+    # Compute summary (handle None values)
     today_earnings = sum(
-        p.driver_payout_amount for p in payments
+        (p.driver_payout_amount or 0.0) for p in payments
         if p.created_at and p.created_at >= today_start
     )
     week_earnings = sum(
-        p.driver_payout_amount for p in payments
+        (p.driver_payout_amount or 0.0) for p in payments
         if p.created_at and p.created_at >= seven_days_ago
     )
     month_earnings = sum(
-        p.driver_payout_amount for p in payments
+        (p.driver_payout_amount or 0.0) for p in payments
         if p.created_at and p.created_at >= thirty_days_ago
     )
-    all_time_earnings = sum(p.driver_payout_amount for p in payments)
+    all_time_earnings = sum((p.driver_payout_amount or 0.0) for p in payments)
 
     return jsonify({
         "success": True,
